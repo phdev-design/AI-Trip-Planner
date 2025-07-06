@@ -1,0 +1,1063 @@
+<!DOCTYPE html>
+<html lang="zh-Hant" class="">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 旅行規劃小幫手</title>
+    
+    <!-- Load Tailwind CSS library first -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 
+      FIX: Configure Tailwind CSS to use the 'class' strategy for dark mode.
+      This script must run AFTER the main Tailwind script is loaded.
+    -->
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+      }
+    </script>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    
+    <script>
+        // To avoid Flash of Unstyled Content (FOUC), this script runs in the head.
+        // Set dark mode based on localStorage or system preference.
+        if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+        // Set language from localStorage or default.
+        const savedLang = localStorage.getItem('lang') || 'zh-Hant';
+        document.documentElement.lang = savedLang;
+    </script>
+    
+    <style>
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+        }
+        /* Loader animation styles */
+        .loader {
+            border: 5px solid #f3f3f3; /* Light mode border */
+            border-top: 5px solid #3498db; /* Light mode spinner */
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+        }
+        .dark .loader {
+             border-color: #4a5568; /* Dark mode border */
+             border-top-color: #63b3ed; /* Dark mode spinner */
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        /* Toast notification styles */
+        .toast {
+            visibility: hidden;
+            min-width: 250px;
+            margin-left: -125px;
+            color: #fff;
+            text-align: center;
+            border-radius: 8px;
+            padding: 16px;
+            position: fixed;
+            z-index: 100;
+            left: 50%;
+            bottom: 30px;
+            opacity: 0;
+            transition: visibility 0s, opacity 0.5s linear;
+        }
+        .toast.show {
+            visibility: visible;
+            opacity: 1;
+        }
+        /* Fade-in animation */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.3s ease-out;
+        }
+        /* Disabled select element styles */
+        select:disabled {
+            background-color: #e9ecef;
+            cursor: not-allowed;
+        }
+        .dark select:disabled {
+            background-color: #2d3748;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 transition-colors duration-300">
+
+    <div class="container mx-auto p-4 md:p-8 max-w-4xl">
+        <header class="text-center mb-8 relative">
+            <h1 class="text-4xl font-bold text-blue-600 dark:text-blue-400" data-lang-key="main_title"></h1>
+            <p class="text-lg text-gray-600 dark:text-gray-400 mt-2" data-lang-key="subtitle"></p>
+            <!-- Controls -->
+            <div class="absolute top-0 right-0 flex items-center gap-2">
+                <!-- Language Toggle Button -->
+                <button id="lang-toggle" type="button" class="text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-4 focus:ring-gray-200 dark:focus:ring-gray-700 rounded-lg text-sm p-2.5 font-semibold">
+                    <span id="lang-toggle-text"></span>
+                </button>
+                <!-- Theme Toggle Button -->
+                <button id="theme-toggle" type="button" class="text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-4 focus:ring-gray-200 dark:focus:ring-gray-700 rounded-lg text-sm p-2.5">
+                    <svg id="theme-toggle-dark-icon" class="hidden w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path></svg>
+                    <svg id="theme-toggle-light-icon" class="hidden w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" fill-rule="evenodd" clip-rule="evenodd"></path></svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- Input Form -->
+        <div id="input-section" class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- Dropdown selection -->
+                <div class="md:col-span-3">
+                    <div class="flex justify-between items-center mb-1">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300" data-lang-key="dest_label"></label>
+                        <button id="random-trip-btn" class="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline focus:outline-none" data-lang-key="random_button"></button>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
+                        <select id="country-select" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 md:col-span-2">
+                        </select>
+                        <select id="city-select" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" disabled>
+                        </select>
+                        <div class="flex gap-2">
+                            <button id="add-destination-btn" class="w-full bg-blue-500 text-white font-semibold py-2 px-4 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-400 disabled:bg-gray-400 disabled:cursor-not-allowed" disabled data-lang-key="add_button"></button>
+                            <button id="add-return-btn" class="w-full bg-green-500 text-white font-semibold py-2 px-4 rounded-md hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-400 disabled:bg-gray-400 disabled:cursor-not-allowed" disabled data-lang-key="add_return_button"></button>
+                        </div>
+                    </div>
+                    <div id="destinations-list" class="mt-3 flex flex-wrap gap-2"></div>
+                </div>
+                <!-- Duration -->
+                <div class="md:col-span-1">
+                    <label for="duration" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" data-lang-key="duration_label"></label>
+                    <input type="number" id="duration" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 dark:placeholder-gray-400" data-lang-placeholder="duration_placeholder">
+                </div>
+                <!-- Transportation Method -->
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" data-lang-key="transport_label"></label>
+                    <div id="transportation-radios" class="flex flex-wrap gap-x-4 gap-y-2 items-center pt-2"></div>
+                </div>
+                <!-- Interests Checkboxes -->
+                <div class="md:col-span-3">
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" data-lang-key="interests_label"></label>
+                    <div id="interests-checkboxes" class="flex flex-wrap gap-x-4 gap-y-2 items-center pt-2"></div>
+                </div>
+            </div>
+            <!-- Action Buttons -->
+            <div class="mt-6 flex flex-col sm:flex-row gap-4">
+                <button id="generate-btn" class="w-full sm:w-2/3 bg-blue-600 dark:bg-blue-500 text-white font-bold py-3 px-4 rounded-md hover:bg-blue-700 dark:hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition duration-300 ease-in-out transform hover:scale-105">
+                    <span data-lang-key="generate_button"></span>
+                </button>
+                <button id="clear-btn" class="w-full sm:w-1/3 bg-gray-500 dark:bg-gray-600 text-white font-bold py-3 px-4 rounded-md hover:bg-gray-600 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400 transition duration-300">
+                    <span data-lang-key="clear_button"></span>
+                </button>
+            </div>
+        </div>
+        
+        <!-- Load Saved Itinerary -->
+        <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
+             <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-3" data-lang-key="load_plan_title"></h3>
+             <div class="flex items-center gap-4">
+                <input type="text" id="load-plan-id" class="flex-grow px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 dark:placeholder-gray-400" data-lang-placeholder="load_plan_placeholder">
+                <button id="load-btn" class="bg-green-500 text-white font-bold py-2 px-6 rounded-md hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-400 transition duration-300" data-lang-key="load_button"></button>
+             </div>
+        </div>
+
+        <!-- Loader -->
+        <div id="loader" class="hidden justify-center items-center my-8 flex-col">
+            <div class="loader"></div>
+            <p class="mt-4 text-gray-600 dark:text-gray-400" data-lang-key="loader_text"></p>
+        </div>
+
+        <!-- Results Section -->
+        <div id="result-section" class="space-y-8">
+            <div id="ai-plan-container" class="hidden">
+                <h2 class="text-2xl font-bold text-center mb-6" data-lang-key="ai_plan_title"></h2>
+                <div id="itinerary-cards" class="space-y-6"></div>
+            </div>
+            <div id="my-plan-container" class="hidden">
+                <h2 class="text-2xl font-bold text-center mb-6" data-lang-key="my_plan_title"></h2>
+                <div id="final-plan" class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg space-y-4"></div>
+                <div class="mt-6 text-center">
+                    <button id="save-btn" class="bg-purple-600 dark:bg-purple-500 text-white font-bold py-3 px-8 rounded-md hover:bg-purple-700 dark:hover:bg-purple-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition duration-300" data-lang-key="save_button"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, collection, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- Firebase Config ---
+        const firebaseConfig = typeof __firebase_config !== 'undefined' 
+            ? JSON.parse(__firebase_config) 
+            : { apiKey: "YOUR_API_KEY", authDomain: "YOUR_AUTH_DOMAIN", projectId: "YOUR_PROJECT_ID" };
+        
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'ai-trip-planner-zh';
+        
+        // --- Global State ---
+        let userId = null;
+        let isAuthReady = false;
+        let currentLang = document.documentElement.lang;
+
+        // --- i18n Data ---
+        const i18n = {
+            'zh-Hant': {
+                main_title: 'AI 旅行規劃小幫手',
+                subtitle: '輸入您的需求，讓 AI 為您打造完美旅程',
+                dest_label: '目的地 (依序新增)',
+                random_button: '我沒想法，隨機來一趟！',
+                country_select: '請選擇國家',
+                city_select_country: '請先選國家',
+                city_select_city: '請選擇地區',
+                add_button: '新增',
+                add_return_button: '回程',
+                duration_label: '總天數',
+                duration_placeholder: '例如：5',
+                transport_label: '交通方式',
+                transport_public: '大眾運輸',
+                transport_car: '租車自駕',
+                transport_any: '都可以',
+                interests_label: '興趣偏好 (可複選)',
+                generate_button: '✨ 開始生成行程',
+                clear_button: '🗑️ 清空重設',
+                load_plan_title: '載入已分享的行程',
+                load_plan_placeholder: '請輸入行程分享代碼',
+                load_button: '載入',
+                loader_text: 'AI 正在努力規劃中，請稍候...',
+                ai_plan_title: 'AI 推薦行程',
+                my_plan_title: '我的最終行程',
+                save_button: '儲存我的行程',
+                day: '第 {day} 天',
+                final_plan_header: '{days} 天客製化行程',
+                final_plan_transport: '交通',
+                final_plan_empty: '請從上方 AI 推薦行程中勾選您喜歡的活動。',
+                toast_fill_all: '請填寫所有欄位並選擇至少一項興趣！',
+                toast_select_city: '請選擇一個地區！',
+                toast_no_activity: '您的行程是空的，請先選擇活動！',
+                toast_save_success: '行程已儲存！分享代碼: {id}',
+                toast_save_fail: '儲存失敗，請檢查網路連線。',
+                toast_load_id_missing: '請輸入行程分享代碼！',
+                toast_load_not_found: '找不到此行程代碼，請確認代碼是否正確。',
+                toast_load_fail: '載入失敗，請檢查網路連線。',
+                toast_load_success: '行程載入成功！',
+                toast_auth_fail: '無法連接到伺服器，請稍後再試。',
+                toast_auth_wait: '使用者資訊尚未就緒，請稍後再試。',
+                toast_cleared: '已清空所有輸入內容。',
+                toast_return_added: '已新增回程地點。',
+                toast_no_start_dest: '請先新增一個啟程地點！',
+                toast_random_success: '已為您產生一組隨機行程！',
+                toast_unrealistic_trip: '您規劃的行程跨越多個國家但天數過短，可能難以實現，請考慮增加天數。',
+                lang_toggle: 'EN',
+            },
+            'en': {
+                main_title: 'AI Trip Planner',
+                subtitle: 'Enter your preferences and let AI craft your perfect journey',
+                dest_label: 'Destinations (add in order)',
+                random_button: "I'm feeling lucky!",
+                country_select: 'Select a country',
+                city_select_country: 'Select country first',
+                city_select_city: 'Select a city/area',
+                add_button: 'Add',
+                add_return_button: 'Return',
+                duration_label: 'Total Days',
+                duration_placeholder: 'e.g., 5',
+                transport_label: 'Transportation',
+                transport_public: 'Public Transit',
+                transport_car: 'Rental Car',
+                transport_any: 'Either is fine',
+                interests_label: 'Interests (select multiple)',
+                generate_button: '✨ Generate Itinerary',
+                clear_button: '🗑️ Clear & Reset',
+                load_plan_title: 'Load Shared Itinerary',
+                load_plan_placeholder: 'Enter itinerary share code',
+                load_button: 'Load',
+                loader_text: 'AI is planning your trip, please wait...',
+                ai_plan_title: 'AI Recommended Itinerary',
+                my_plan_title: 'My Final Itinerary',
+                save_button: 'Save My Itinerary',
+                day: 'Day {day}',
+                final_plan_header: '{days}-Day Customized Trip',
+                final_plan_transport: 'Transport',
+                final_plan_empty: 'Please select your favorite activities from the AI recommendations above.',
+                toast_fill_all: 'Please fill all fields and select at least one interest!',
+                toast_select_city: 'Please select a city/area!',
+                toast_no_activity: 'Your itinerary is empty. Please select some activities first!',
+                toast_save_success: 'Itinerary saved! Share code: {id}',
+                toast_save_fail: 'Failed to save. Please check your connection.',
+                toast_load_id_missing: 'Please enter an itinerary share code!',
+                toast_load_not_found: 'This itinerary code was not found. Please check if the code is correct.',
+                toast_load_fail: 'Failed to load. Please check your connection.',
+                toast_load_success: 'Itinerary loaded successfully!',
+                toast_auth_fail: 'Could not connect to the server. Please try again later.',
+                toast_auth_wait: 'User information is not ready yet. Please try again in a moment.',
+                toast_cleared: 'All inputs have been cleared.',
+                toast_return_added: 'Return destination has been added.',
+                toast_no_start_dest: 'Please add a departure destination first!',
+                toast_random_success: 'A random trip has been generated for you!',
+                toast_unrealistic_trip: 'This itinerary spans multiple countries with a very short duration, which may be unrealistic. Please consider increasing the number of days.',
+                lang_toggle: '中',
+            }
+        };
+
+        // --- Static Data ---
+        const travelData = {
+            Japan: { zh: '日本', cities: { Tokyo: '東京', Osaka: '大阪', Kyoto: '京都', Hokkaido: '北海道', Fukuoka: '福岡', Nagoya: '名古屋', Okinawa: '沖繩' } },
+            Taiwan: { zh: '台灣', cities: { Taipei: '台北', Taichung: '台中', Tainan: '台南', Kaohsiung: '高雄', Hualien: '花蓮', Taitung: '台東', Kenting: '墾丁' } },
+            Korea: { zh: '韓國', cities: { Seoul: '首爾', Busan: '釜山', Jeju: '濟州島', Incheon: '仁川' } },
+            Thailand: { zh: '泰國', cities: { Bangkok: '曼谷', 'Chiang Mai': '清邁', Phuket: '普吉島', Pattaya: '芭達雅' } },
+            USA: { zh: '美國', cities: { 'New York': '紐約', 'Los Angeles': '洛杉磯', 'San Francisco': '舊金山', 'Las Vegas': '拉斯維加斯' } },
+            UK: { zh: '英國', cities: { 
+                London: '倫敦', 
+                Edinburgh: '愛丁堡', 
+                Manchester: '曼徹斯特',
+                Cambridge: '劍橋',
+                Oxford: '牛津',
+                Bath: '巴斯',
+                Liverpool: '利物浦',
+                York: '約克'
+             } },
+            HongKong: { zh: '香港', cities: { HongKong: '香港' } }
+        };
+        const interestOptions = {
+            food: { zh: '美食', en: 'Food' },
+            shopping: { zh: '購物', en: 'Shopping' },
+            history: { zh: '歷史古蹟', en: 'Historic Sites' },
+            nature: { zh: '自然風光', en: 'Nature & Scenery' },
+            anime: { zh: '動漫文化', en: 'Anime & Culture' },
+            art: { zh: '藝術展覽', en: 'Art & Museums' },
+            family: { zh: '親子活動', en: 'Family Activities' },
+            nightlife: { zh: '夜生活', en: 'Nightlife' }
+        };
+        
+        // --- DOM Elements Cache ---
+        const allDOMElements = {
+            countrySelectEl: document.getElementById('country-select'),
+            citySelectEl: document.getElementById('city-select'),
+            addDestinationBtn: document.getElementById('add-destination-btn'),
+            addReturnBtn: document.getElementById('add-return-btn'),
+            randomTripBtn: document.getElementById('random-trip-btn'),
+            destinationsListEl: document.getElementById('destinations-list'),
+            durationEl: document.getElementById('duration'),
+            interestsCheckboxesEl: document.getElementById('interests-checkboxes'),
+            transportationRadiosEl: document.getElementById('transportation-radios'),
+            generateBtn: document.getElementById('generate-btn'),
+            clearBtn: document.getElementById('clear-btn'),
+            loader: document.getElementById('loader'),
+            itineraryCards: document.getElementById('itinerary-cards'),
+            aiPlanContainer: document.getElementById('ai-plan-container'),
+            myPlanContainer: document.getElementById('my-plan-container'),
+            finalPlan: document.getElementById('final-plan'),
+            saveBtn: document.getElementById('save-btn'),
+            loadBtn: document.getElementById('load-btn'),
+            loadPlanIdEl: document.getElementById('load-plan-id'),
+            toast: document.getElementById('toast'),
+            themeToggleButton: document.getElementById('theme-toggle'),
+            themeToggleDarkIcon: document.getElementById('theme-toggle-dark-icon'),
+            themeToggleLightIcon: document.getElementById('theme-toggle-light-icon'),
+            langToggleButton: document.getElementById('lang-toggle'),
+            langToggleText: document.getElementById('lang-toggle-text'),
+        };
+
+        // --- Language Switcher ---
+        const setLanguage = (lang) => {
+            currentLang = lang;
+            document.documentElement.lang = lang;
+            localStorage.setItem('lang', lang);
+
+            // Update all elements with a data-lang-key attribute
+            document.querySelectorAll('[data-lang-key]').forEach(el => {
+                const key = el.getAttribute('data-lang-key');
+                if (i18n[lang] && i18n[lang][key]) {
+                    el.textContent = i18n[lang][key];
+                }
+            });
+            // Update all elements with a data-lang-placeholder attribute
+            document.querySelectorAll('[data-lang-placeholder]').forEach(el => {
+                const key = el.getAttribute('data-lang-placeholder');
+                 if (i18n[lang] && i18n[lang][key]) {
+                    el.placeholder = i18n[lang][key];
+                }
+            });
+            // Update language toggle button text
+            allDOMElements.langToggleText.textContent = i18n[lang].lang_toggle;
+            
+            // Re-render dynamic UI to apply the new language
+            initializeDynamicUI();
+        };
+
+        // --- Dynamic UI Initialization ---
+        const initializeDynamicUI = () => {
+            const { countrySelectEl, transportationRadiosEl, interestsCheckboxesEl, destinationsListEl } = allDOMElements;
+            
+            // Populate country dropdown
+            const selectedCountry = countrySelectEl.value; // Preserve selection
+            countrySelectEl.innerHTML = `<option value="">${i18n[currentLang].country_select}</option>`;
+            Object.entries(travelData).forEach(([enCountry, details]) => {
+                const countryName = currentLang === 'en' ? enCountry : details.zh;
+                countrySelectEl.add(new Option(countryName, enCountry));
+            });
+            countrySelectEl.value = selectedCountry; // Restore selection
+
+            // Populate transportation radio buttons
+            const selectedTransport = document.querySelector('input[name="transportation"]:checked')?.value; // Preserve selection
+            transportationRadiosEl.innerHTML = '';
+            ['transport_public', 'transport_car', 'transport_any'].forEach((key) => {
+                const value = i18n['en'][key]; // Internal value is always English for consistency
+                const text = i18n[currentLang][key];
+                const div = document.createElement('div');
+                div.className = 'flex items-center';
+                const isChecked = selectedTransport ? value === selectedTransport : key === 'transport_public';
+                div.innerHTML = `
+                    <input type="radio" id="${key}" name="transportation" value="${value}" class="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:focus:ring-blue-600" ${isChecked ? 'checked' : ''}>
+                    <label for="${key}" class="ml-2 text-sm text-gray-700 dark:text-gray-300">${text}</label>
+                `;
+                transportationRadiosEl.appendChild(div);
+            });
+
+            // Populate interest checkboxes
+            const selectedInterests = Array.from(interestsCheckboxesEl.querySelectorAll('input:checked')).map(cb => cb.value); // Preserve selection
+            interestsCheckboxesEl.innerHTML = '';
+            Object.entries(interestOptions).forEach(([key, names]) => {
+                const div = document.createElement('div');
+                div.className = 'flex items-center';
+                // FIX: Add fallback to prevent 'undefined'
+                const labelText = names[currentLang] || names['en'] || key;
+                const isChecked = selectedInterests.includes(key);
+                div.innerHTML = `
+                    <input type="checkbox" id="interest-${key}" value="${key}" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:focus:ring-blue-600" ${isChecked ? 'checked' : ''}>
+                    <label for="interest-${key}" class="ml-2 text-sm text-gray-700 dark:text-gray-300">${labelText}</label>
+                `;
+                interestsCheckboxesEl.appendChild(div);
+            });
+            
+            // Update language of selected destination tags
+            destinationsListEl.querySelectorAll('[data-destination-key]').forEach(tag => {
+                const cityKey = tag.dataset.destinationKey;
+                const countryKey = tag.dataset.countryKey;
+                const cityName = currentLang === 'en' ? cityKey : travelData[countryKey].cities[cityKey];
+                tag.childNodes[0].nodeValue = cityName + ' '; // Update the text node
+            });
+            
+            // Update city dropdown
+            updateCityDropdown();
+        };
+
+        // Update city dropdown based on selected country
+        const updateCityDropdown = () => {
+            const { countrySelectEl, citySelectEl } = allDOMElements;
+            const selectedCountryKey = countrySelectEl.value;
+            const selectedCity = citySelectEl.value; // Preserve selection
+            citySelectEl.innerHTML = '';
+            
+            if (selectedCountryKey && travelData[selectedCountryKey]) {
+                citySelectEl.disabled = false;
+                citySelectEl.add(new Option(i18n[currentLang].city_select_city, ""));
+                Object.entries(travelData[selectedCountryKey].cities).forEach(([enCity, zhCity]) => {
+                    const cityName = currentLang === 'en' ? enCity : zhCity;
+                    citySelectEl.add(new Option(cityName, enCity));
+                });
+                citySelectEl.value = selectedCity; // Restore selection
+            } else {
+                citySelectEl.disabled = true;
+                citySelectEl.add(new Option(i18n[currentLang].city_select_country, ""));
+            }
+            updateDestinationButtonsState();
+        };
+
+        // --- Main App Start Function ---
+        function startApp() { 
+            // Initialize language based on saved settings
+            setLanguage(currentLang); 
+            
+            // Initialize dark mode toggle icon visibility
+            if (document.documentElement.classList.contains('dark')) {
+                allDOMElements.themeToggleLightIcon.classList.remove('hidden');
+                allDOMElements.themeToggleDarkIcon.classList.add('hidden');
+            } else {
+                allDOMElements.themeToggleDarkIcon.classList.remove('hidden');
+                allDOMElements.themeToggleLightIcon.classList.add('hidden');
+            }
+
+            // --- Event Listeners ---
+            allDOMElements.countrySelectEl.addEventListener('change', updateCityDropdown);
+            
+            allDOMElements.citySelectEl.addEventListener('change', updateDestinationButtonsState);
+            
+            allDOMElements.generateBtn.addEventListener('click', handleGenerateItinerary);
+            allDOMElements.clearBtn.addEventListener('click', () => handleClearForm());
+            allDOMElements.randomTripBtn.addEventListener('click', handleRandomTrip);
+            allDOMElements.saveBtn.addEventListener('click', handleSavePlan);
+            allDOMElements.loadBtn.addEventListener('click', handleLoadPlan);
+            allDOMElements.addDestinationBtn.addEventListener('click', addDestinationTag);
+            allDOMElements.addReturnBtn.addEventListener('click', handleAddReturnTrip);
+            
+            allDOMElements.langToggleButton.addEventListener('click', () => {
+                const newLang = currentLang === 'zh-Hant' ? 'en' : 'zh-Hant';
+                setLanguage(newLang);
+            });
+            
+            allDOMElements.themeToggleButton.addEventListener('click', () => {
+                // Toggle icons
+                allDOMElements.themeToggleDarkIcon.classList.toggle('hidden');
+                allDOMElements.themeToggleLightIcon.classList.toggle('hidden');
+                
+                // Toggle class and save preference
+                const isDark = document.documentElement.classList.toggle('dark');
+                localStorage.setItem('theme', isDark ? 'dark' : 'light');
+            });
+
+            updateDestinationButtonsState();
+        }
+        
+        // --- Core Functions ---
+
+        // Controls the enabled/disabled state of destination-related buttons
+        function updateDestinationButtonsState() {
+            const { addDestinationBtn, addReturnBtn, citySelectEl, destinationsListEl } = allDOMElements;
+            addDestinationBtn.disabled = !citySelectEl.value;
+            addReturnBtn.disabled = destinationsListEl.children.length === 0;
+        }
+
+        // Handle the clear form button click
+        function handleClearForm(showToastMsg = true) {
+            const {
+                destinationsListEl,
+                countrySelectEl,
+                durationEl,
+                interestsCheckboxesEl,
+                transportationRadiosEl,
+                aiPlanContainer,
+                myPlanContainer,
+                itineraryCards,
+                finalPlan,
+                loadPlanIdEl
+            } = allDOMElements;
+
+            destinationsListEl.innerHTML = '';
+            countrySelectEl.value = '';
+            updateCityDropdown();
+            durationEl.value = '';
+            interestsCheckboxesEl.querySelectorAll('input:checked').forEach(cb => cb.checked = false);
+            const defaultTransport = transportationRadiosEl.querySelector('input[value="Public Transit"]');
+            if (defaultTransport) defaultTransport.checked = true;
+            aiPlanContainer.classList.add('hidden');
+            myPlanContainer.classList.add('hidden');
+            itineraryCards.innerHTML = '';
+            finalPlan.innerHTML = '';
+            loadPlanIdEl.value = '';
+            updateDestinationButtonsState();
+            if (showToastMsg) {
+                showToast(i18n[currentLang].toast_cleared, 'success');
+            }
+        }
+        
+        // Handle the random trip button click
+        function handleRandomTrip() {
+            handleClearForm(false); // Clear form without showing toast
+
+            const { countrySelectEl, durationEl, interestsCheckboxesEl } = allDOMElements;
+
+            // Pick a random country
+            const countryKeys = Object.keys(travelData);
+            const randomCountryKey = countryKeys[Math.floor(Math.random() * countryKeys.length)];
+            countrySelectEl.value = randomCountryKey;
+            updateCityDropdown();
+
+            // Pick 2-3 random cities
+            const cities = travelData[randomCountryKey].cities;
+            const cityKeys = Object.keys(cities);
+            const shuffledCities = cityKeys.sort(() => 0.5 - Math.random());
+            const cityCount = Math.floor(Math.random() * 2) + 2; // 2 or 3 cities
+            const selectedCities = shuffledCities.slice(0, cityCount);
+            selectedCities.forEach(cityKey => {
+                renderDestinationTag(cityKey, randomCountryKey);
+            });
+
+            // Set random duration (5-14 days)
+            durationEl.value = Math.floor(Math.random() * 10) + 5;
+
+            // Pick 2-4 random interests
+            const interestKeys = Object.keys(interestOptions);
+            const shuffledInterests = interestKeys.sort(() => 0.5 - Math.random());
+            const interestCount = Math.floor(Math.random() * 3) + 2; // 2, 3, or 4
+            const selectedInterests = shuffledInterests.slice(0, interestCount);
+            selectedInterests.forEach(interestKey => {
+                const checkbox = interestsCheckboxesEl.querySelector(`input[value="${interestKey}"]`);
+                if (checkbox) checkbox.checked = true;
+            });
+
+            showToast(i18n[currentLang].toast_random_success, 'success');
+        }
+
+
+        function showToast(message, type = 'success') {
+            allDOMElements.toast.textContent = message;
+            const colorClass = type === 'success' ? 'bg-green-500' : 'bg-red-500';
+            allDOMElements.toast.className = `toast show ${colorClass}`;
+            setTimeout(() => {
+                allDOMElements.toast.className = allDOMElements.toast.className.replace("show", "");
+            }, 3000);
+        }
+
+        // Helper function to translate transportation value
+        function getTranslatedTransportText(transportValueInEnglish) {
+            const value = transportValueInEnglish || 'Public Transit';
+            let keyFound = '';
+            for (const key in i18n.en) {
+                if (key.startsWith('transport_') && i18n.en[key] === value) {
+                    keyFound = key;
+                    break;
+                }
+            }
+            return keyFound ? i18n[currentLang][keyFound] : value;
+        }
+
+        // Add a destination tag
+        function addDestinationTag() {
+            const { citySelectEl, countrySelectEl } = allDOMElements;
+            const cityKey = citySelectEl.value;
+            const countryKey = countrySelectEl.value;
+            if (!cityKey) {
+                showToast(i18n[currentLang].toast_select_city, "error");
+                return;
+            }
+            
+            renderDestinationTag(cityKey, countryKey);
+            citySelectEl.value = ""; 
+            updateDestinationButtonsState();
+        }
+        
+        // Handle adding a return trip
+        function handleAddReturnTrip() {
+            const { destinationsListEl } = allDOMElements;
+            const firstDestination = destinationsListEl.querySelector('[data-destination-key]');
+
+            if (!firstDestination) {
+                showToast(i18n[currentLang].toast_no_start_dest, 'error');
+                return;
+            }
+
+            const cityKey = firstDestination.dataset.destinationKey;
+            const countryKey = firstDestination.dataset.countryKey;
+            renderDestinationTag(cityKey, countryKey);
+            showToast(i18n[currentLang].toast_return_added, 'success');
+        }
+
+        // Render a single destination tag
+        function renderDestinationTag(cityKey, countryKey) {
+            const cityName = currentLang === 'en' ? cityKey : travelData[countryKey].cities[cityKey];
+            const tag = document.createElement('div');
+            tag.className = 'flex items-center bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 text-sm font-medium pl-3 pr-2 py-1 rounded-full animate-fade-in';
+            tag.dataset.destinationKey = cityKey;
+            tag.dataset.countryKey = countryKey;
+            tag.textContent = cityName + ' ';
+            
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'ml-1 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white font-bold';
+            removeBtn.innerHTML = '&times;';
+            removeBtn.onclick = () => {
+                tag.remove();
+                updateDestinationButtonsState();
+            };
+            
+            tag.appendChild(removeBtn);
+            allDOMElements.destinationsListEl.appendChild(tag);
+            updateDestinationButtonsState();
+        }
+
+        // Validate if the trip duration and destinations are realistic
+        function validateTripFeasibility() {
+            const { destinationsListEl, durationEl } = allDOMElements;
+            const duration = parseInt(durationEl.value, 10);
+            
+            const countryTags = Array.from(destinationsListEl.querySelectorAll('[data-country-key]'));
+            const uniqueCountries = new Set(countryTags.map(tag => tag.dataset.countryKey));
+
+            // If traveling to more than one country, check if the duration is too short.
+            // Heuristic: at least 2 days per country.
+            if (uniqueCountries.size > 1 && duration < uniqueCountries.size * 2) {
+                return false;
+            }
+
+            return true;
+        }
+
+        // Handle the "Generate Itinerary" button click
+        async function handleGenerateItinerary() {
+            const { destinationsListEl, durationEl, interestsCheckboxesEl, loader, aiPlanContainer, myPlanContainer, itineraryCards, finalPlan } = allDOMElements;
+            
+            const destinations = Array.from(destinationsListEl.querySelectorAll('[data-destination-key]')).map(tag => {
+                const cityKey = tag.dataset.destinationKey;
+                const countryKey = tag.dataset.countryKey;
+                return currentLang === 'en' ? cityKey : travelData[countryKey].cities[cityKey];
+            });
+            const duration = durationEl.value.trim();
+            const selectedInterests = Array.from(interestsCheckboxesEl.querySelectorAll('input:checked')).map(cb => {
+                const interestKey = cb.value;
+                return interestOptions[interestKey]?.[currentLang] || interestOptions[interestKey]?.['en'] || interestKey;
+            });
+            const transportation = document.querySelector('input[name="transportation"]:checked').value;
+            const transportText = getTranslatedTransportText(transportation);
+
+            if (destinations.length === 0 || !duration || selectedInterests.length === 0) {
+                showToast(i18n[currentLang].toast_fill_all, "error");
+                return;
+            }
+
+            // Feasibility Check
+            if (!validateTripFeasibility()) {
+                showToast(i18n[currentLang].toast_unrealistic_trip, 'error');
+                return;
+            }
+
+            loader.style.display = 'flex';
+            [aiPlanContainer, myPlanContainer].forEach(el => el.classList.add('hidden'));
+            itineraryCards.innerHTML = '';
+            finalPlan.innerHTML = '';
+
+            try {
+                const destinationString = destinations.join(currentLang === 'en' ? ' → ' : ' → ');
+                const interestsString = selectedInterests.join(currentLang === 'en' ? ', ' : '、');
+                // Updated Prompt to request transport details
+                const prompt = currentLang === 'en' 
+                    ? `Please create a detailed itinerary for a ${duration}-day trip to ${destinationString}. The main mode of transport will be ${transportation}. Please focus on these interests: ${interestsString}. The response must be in English. Provide the output in a structured JSON format. The JSON should be an object with a key 'itinerary' which is an array of objects. Each object represents a day and should have properties 'day' (number), 'theme' (string), and 'activities' (an array of objects, each with 'name', 'description', and 'transport_details' properties. The 'transport_details' should describe how to get to this activity from the previous one).`
+                    : `請為一個前往「${destinationString}」的「${duration}」天旅程創建一個詳細的行程。主要的交通方式為「${transportText}」。行程需包含這些地點之間的交通方式建議。請專注於「${interestsString}」。回應必須是繁體中文。請以結構化的 JSON 格式提供輸出。JSON 應該是一個對象，包含一個名為 'itinerary' 的鍵，其值為一個對象數組。每個對象代表一天，並應具有 'day' (數字), 'theme' (當日主題，字串), 和 'activities' (一個對象數組，每個對象包含 'name', 'description', 和 'transport_details' 屬性。『transport_details』應描述如何從上一個活動抵達此活動)。`;
+
+                const payload = {
+                    contents: [{ role: "user", parts: [{ text: prompt }] }],
+                    generationConfig: { responseMimeType: "application/json" }
+                };
+                const apiKey = ""; // Handled by Canvas
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+                const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+
+                if (!response.ok) throw new Error(`API request failed with status ${response.status}`);
+                const result = await response.json();
+                
+                if (result.candidates?.[0]?.content?.parts?.[0]) {
+                    const data = JSON.parse(result.candidates[0].content.parts[0].text);
+                    renderItinerary(data.itinerary);
+                } else {
+                    throw new Error("AI could not generate an itinerary. Please try again.");
+                }
+            } catch (error) {
+                console.error("Error generating itinerary:", error);
+                showToast(`${i18n[currentLang].toast_load_fail}: ${error.message}`, "error");
+            } finally {
+                loader.style.display = 'none';
+            }
+        }
+
+        // Render the AI-recommended itinerary
+        function renderItinerary(itineraryData) {
+            const { itineraryCards, aiPlanContainer, myPlanContainer } = allDOMElements;
+            itineraryCards.innerHTML = '';
+            itineraryData.forEach(dayPlan => {
+                const card = document.createElement('div');
+                card.className = 'bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 animate-fade-in';
+                
+                let activitiesHtml = dayPlan.activities.map((activity, index) => {
+                    // Render transport details before each activity (except the first one)
+                    const transportHtml = index > 0 && activity.transport_details ? `
+                        <div class="flex items-center gap-2 my-3 pl-8">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v1.586l3.293-3.293a1 1 0 111.414 1.414L12.414 7H14a1 1 0 110 2h-4V5a1 1 0 011-1zm-4.707 9.293a1 1 0 010-1.414L8.586 7.586V6a1 1 0 112 0v4H6a1 1 0 110-2h1.586l-3.293 3.293a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+                            </svg>
+                            <p class="text-sm text-gray-500 dark:text-gray-400 italic">${activity.transport_details}</p>
+                        </div>
+                    ` : '';
+
+                    return transportHtml + `
+                    <div class="flex items-start">
+                        <input type="checkbox" id="day-${dayPlan.day}-act-${index}" class="mt-1 h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 activity-checkbox" 
+                            data-day="${dayPlan.day}" 
+                            data-theme="${activity.theme || dayPlan.theme}" 
+                            data-name="${activity.name}" 
+                            data-desc="${activity.description}"
+                            data-transport="${activity.transport_details || ''}">
+                        <label for="day-${dayPlan.day}-act-${index}" class="ml-3 w-full cursor-pointer">
+                            <span class="font-semibold text-gray-800 dark:text-gray-200">${activity.name}</span>
+                            <p class="text-gray-600 dark:text-gray-400 text-sm">${activity.description}</p>
+                        </label>
+                    </div>`;
+                }).join('');
+
+                card.innerHTML = `
+                    <div class="flex justify-between items-center">
+                        <h3 class="text-xl font-bold text-blue-700 dark:text-blue-400">${i18n[currentLang].day.replace('{day}', dayPlan.day)}</h3>
+                        <span class="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300 text-sm font-medium px-3 py-1 rounded-full">${dayPlan.theme}</span>
+                    </div>
+                    <div class="mt-4 space-y-2">${activitiesHtml}</div>
+                `;
+                itineraryCards.appendChild(card);
+            });
+
+            [aiPlanContainer, myPlanContainer].forEach(el => el.classList.remove('hidden'));
+            document.querySelectorAll('.activity-checkbox').forEach(checkbox => {
+                checkbox.addEventListener('change', updateFinalPlan);
+            });
+            updateFinalPlan();
+        }
+        
+        // Update the "My Final Itinerary" section
+        function updateFinalPlan() {
+            const { finalPlan, destinationsListEl, durationEl } = allDOMElements;
+            finalPlan.innerHTML = '';
+            const checkedActivities = document.querySelectorAll('.activity-checkbox:checked');
+            
+            const destinations = Array.from(destinationsListEl.querySelectorAll('[data-destination-key]')).map(tag => {
+                 const cityKey = tag.dataset.destinationKey;
+                 const countryKey = tag.dataset.countryKey;
+                 return currentLang === 'en' ? cityKey : travelData[countryKey].cities[cityKey];
+            });
+            const destinationString = destinations.join(currentLang === 'en' ? ' → ' : ' → ');
+            const transportValue = document.querySelector('input[name="transportation"]:checked')?.value;
+            const transportation = getTranslatedTransportText(transportValue);
+
+            const planHeader = `
+                <div class="pb-4 mb-4 border-b dark:border-gray-700">
+                    <h3 class="text-xl font-bold text-gray-900 dark:text-white">${destinationString || i18n[currentLang].my_plan_title}</h3>
+                    <div class="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400 mt-1">
+                        <span>${i18n[currentLang].final_plan_header.replace('{days}', durationEl.value || 'N')}</span>
+                        <span class="border-l dark:border-gray-600 pl-4">${i18n[currentLang].final_plan_transport}: ${transportation}</span>
+                    </div>
+                </div>
+            `;
+            finalPlan.insertAdjacentHTML('beforeend', planHeader);
+
+            if (checkedActivities.length === 0) {
+                finalPlan.insertAdjacentHTML('beforeend', `<p class="text-gray-500 dark:text-gray-400 text-center py-4">${i18n[currentLang].final_plan_empty}</p>`);
+                return;
+            }
+
+            const groupedByDay = {};
+            checkedActivities.forEach(checkbox => {
+                const { day, theme, name, desc, transport } = checkbox.dataset;
+                if (!groupedByDay[day]) groupedByDay[day] = { theme: theme, activities: [] };
+                groupedByDay[day].activities.push({ name, description: desc, transport_details: transport });
+            });
+
+            Object.keys(groupedByDay).sort((a, b) => a - b).forEach(day => {
+                const dayData = groupedByDay[day];
+                const dayDiv = document.createElement('div');
+                dayDiv.className = "border-t dark:border-gray-700 pt-4 mt-4 first-of-type:border-t-0 first-of-type:pt-0 first-of-type:mt-0";
+                
+                const activitiesList = dayData.activities.map((act, index) => {
+                    const transportHtml = index > 0 && act.transport_details ? `
+                        <div class="flex items-center gap-2 my-2 pl-4">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v1.586l3.293-3.293a1 1 0 111.414 1.414L12.414 7H14a1 1 0 110 2h-4V5a1 1 0 011-1zm-4.707 9.293a1 1 0 010-1.414L8.586 7.586V6a1 1 0 112 0v4H6a1 1 0 110-2h1.586l-3.293 3.293a1 1 0 01-1.414 0z" clip-rule="evenodd" /></svg>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 italic">${act.transport_details}</p>
+                        </div>
+                    ` : '';
+                    return transportHtml + `<li class="ml-4 list-disc text-gray-700 dark:text-gray-300">${act.name}</li>`;
+                }).join('');
+
+                dayDiv.innerHTML = `
+                    <h4 class="text-lg font-semibold text-gray-800 dark:text-gray-200">${i18n[currentLang].day.replace('{day}', day)}: ${dayData.theme}</h4>
+                    <ul class="mt-2 space-y-1">${activitiesList}</ul>
+                `;
+                finalPlan.appendChild(dayDiv);
+            });
+        }
+
+        // Handle saving the itinerary
+        async function handleSavePlan() {
+            if (!isAuthReady || !userId) {
+                showToast(i18n[currentLang].toast_auth_wait, "error");
+                return;
+            }
+            const checkedActivities = document.querySelectorAll('.activity-checkbox:checked');
+            if (checkedActivities.length === 0) {
+                showToast(i18n[currentLang].toast_no_activity, "error");
+                return;
+            }
+            
+            const planData = {
+                destinations: Array.from(allDOMElements.destinationsListEl.querySelectorAll('[data-destination-key]')).map(tag => ({
+                    countryKey: tag.dataset.countryKey,
+                    cityKey: tag.dataset.destinationKey
+                })),
+                duration: allDOMElements.durationEl.value.trim(),
+                transportation: document.querySelector('input[name="transportation"]:checked').value,
+                interests: Array.from(allDOMElements.interestsCheckboxesEl.querySelectorAll('input:checked')).map(cb => cb.value),
+                createdAt: new Date().toISOString(),
+                itinerary: [],
+                userId: userId,
+                lang: currentLang
+            };
+
+            const groupedByDay = {};
+            checkedActivities.forEach(checkbox => {
+                const { day, theme, name, desc, transport } = checkbox.dataset;
+                if (!groupedByDay[day]) groupedByDay[day] = { day: parseInt(day), theme: theme, activities: [] };
+                groupedByDay[day].activities.push({ name, description: desc, transport_details: transport });
+            });
+            planData.itinerary = Object.values(groupedByDay).sort((a, b) => a.day - b.day);
+
+            try {
+                const docRef = await addDoc(collection(db, "artifacts", appId, "public", "data", "plans"), planData);
+                showToast(i18n[currentLang].toast_save_success.replace('{id}', docRef.id), "success");
+                allDOMElements.loadPlanIdEl.value = docRef.id;
+            } catch (error) {
+                console.error("Save failed:", error);
+                showToast(i18n[currentLang].toast_save_fail, "error");
+            }
+        }
+
+        // Handle loading an itinerary
+        async function handleLoadPlan() {
+            const planId = allDOMElements.loadPlanIdEl.value.trim();
+            if (!planId) {
+                showToast(i18n[currentLang].toast_load_id_missing, "error");
+                return;
+            }
+
+            allDOMElements.loader.style.display = 'flex';
+            [allDOMElements.aiPlanContainer, allDOMElements.myPlanContainer].forEach(el => el.classList.add('hidden'));
+
+            try {
+                const planRef = doc(db, "artifacts", appId, "public", "data", "plans", planId);
+                const docSnap = await getDoc(planRef);
+
+                if (docSnap.exists()) {
+                    const planData = docSnap.data();
+                    
+                    if (planData.lang && planData.lang !== currentLang) {
+                        setLanguage(planData.lang);
+                    }
+                    
+                    allDOMElements.destinationsListEl.innerHTML = '';
+                    if (planData.destinations?.length) {
+                        planData.destinations.forEach(dest => renderDestinationTag(dest.cityKey, dest.countryKey));
+                    }
+                    allDOMElements.durationEl.value = planData.duration || '';
+                    
+                    if (planData.transportation) {
+                        const radio = document.querySelector(`input[name="transportation"][value="${planData.transportation}"]`);
+                        if (radio) radio.checked = true;
+                    }
+                    
+                    allDOMElements.interestsCheckboxesEl.querySelectorAll('input').forEach(cb => cb.checked = false);
+                    if (planData.interests?.length) {
+                        planData.interests.forEach(interestKey => {
+                            const cb = allDOMElements.interestsCheckboxesEl.querySelector(`input[value="${interestKey}"]`);
+                            if (cb) cb.checked = true;
+                        });
+                    }
+                    
+                    renderSavedPlan(planData.itinerary, planData);
+                    showToast(i18n[currentLang].toast_load_success, "success");
+                } else {
+                    showToast(i18n[currentLang].toast_load_not_found, "error");
+                }
+            } catch (error) {
+                console.error("Load failed:", error);
+                showToast(i18n[currentLang].toast_load_fail, "error");
+            } finally {
+                allDOMElements.loader.style.display = 'none';
+            }
+        }
+
+        // Render the final itinerary loaded from Firestore
+        function renderSavedPlan(itineraryData, planDetails) {
+            const { finalPlan, aiPlanContainer, itineraryCards, myPlanContainer } = allDOMElements;
+            finalPlan.innerHTML = '';
+            aiPlanContainer.classList.add('hidden');
+            itineraryCards.innerHTML = '';
+
+            const destinationString = (planDetails.destinations?.map(d => currentLang === 'en' ? d.cityKey : travelData[d.countryKey].cities[d.cityKey]) || ['Unknown']).join(currentLang === 'en' ? ' → ' : ' → ');
+            const transportValue = planDetails.transportation;
+            const transportation = getTranslatedTransportText(transportValue);
+            
+            const planHeader = `
+                <div class="pb-4 mb-4 border-b dark:border-gray-700">
+                    <h3 class="text-xl font-bold text-gray-900 dark:text-white">${destinationString}</h3>
+                    <div class="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400 mt-1">
+                        <span>${i18n[currentLang].final_plan_header.replace('{days}', planDetails.duration)}</span>
+                        <span class="border-l dark:border-gray-600 pl-4">${i18n[currentLang].final_plan_transport}: ${transportation}</span>
+                    </div>
+                </div>
+            `;
+            finalPlan.insertAdjacentHTML('beforeend', planHeader);
+
+            if (!itineraryData || itineraryData.length === 0) {
+                finalPlan.insertAdjacentHTML('beforeend', `<p class="text-gray-500 dark:text-gray-400 text-center py-4">${i18n[currentLang].final_plan_empty}</p>`);
+                myPlanContainer.classList.remove('hidden');
+                return;
+            }
+
+            itineraryData.forEach(dayData => {
+                const dayDiv = document.createElement('div');
+                dayDiv.className = "border-t dark:border-gray-700 pt-4 mt-4 first-of-type:border-t-0 first-of-type:pt-0 first-of-type:mt-0";
+                
+                const activitiesList = dayData.activities.map((act, index) => {
+                    const transportHtml = index > 0 && act.transport_details ? `
+                        <div class="flex items-center gap-2 my-2 pl-4">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v1.586l3.293-3.293a1 1 0 111.414 1.414L12.414 7H14a1 1 0 110 2h-4V5a1 1 0 011-1zm-4.707 9.293a1 1 0 010-1.414L8.586 7.586V6a1 1 0 112 0v4H6a1 1 0 110-2h1.586l-3.293 3.293a1 1 0 01-1.414 0z" clip-rule="evenodd" /></svg>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 italic">${act.transport_details}</p>
+                        </div>
+                    ` : '';
+                    return transportHtml + `
+                    <li class="ml-4 list-disc text-gray-700 dark:text-gray-300">
+                        <span class="font-semibold">${act.name}</span>: ${act.description}
+                    </li>`;
+                }).join('');
+
+                dayDiv.innerHTML = `
+                    <h4 class="text-lg font-semibold text-gray-800 dark:text-gray-200">${i18n[currentLang].day.replace('{day}', dayData.day)}: ${dayData.theme}</h4>
+                    <ul class="mt-2 space-y-2">${activitiesList}</ul>
+                `;
+                finalPlan.appendChild(dayDiv);
+            });
+            
+            myPlanContainer.classList.remove('hidden');
+        }
+        
+        // --- Firebase Authentication ---
+        async function authenticate() {
+            try {
+                if (!auth.currentUser) {
+                    const token = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+                    if (token) {
+                        await signInWithCustomToken(auth, token);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                }
+            } catch (error) {
+                console.error("Authentication failed:", error);
+                showToast(i18n[currentLang]?.toast_auth_fail || 'Authentication failed. Please try again.', "error");
+            }
+        }
+        
+        // --- App Entry Point ---
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                userId = user.uid;
+            } else {
+                userId = null;
+            }
+            isAuthReady = true;
+        });
+        
+        authenticate();
+        startApp();
+
+    </script>
+</body>
+</html>
